@@ -1,0 +1,4 @@
+google-genai
+streamlit
+Pillow
+python-dotenv
