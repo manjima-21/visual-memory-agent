@@ -1,55 +1,95 @@
+import os
+import time
 import streamlit as st
+from google import genai
 from PIL import Image
-from agent import analyze_scene, get_memory_history
 
-# Page Config
-st.set_page_config(page_title="Visual Memory Agent", page_icon="🧠")
+# 1. PAGE SETUP
+st.set_page_config(page_title="Visual Memory Agent", page_icon="🧠", layout="wide")
 
-st.title("🧠 Personal Memory Agent")
-st.markdown("I help you remember where you put your things using AI Vision.")
-
-# --- SIDEBAR: MEMORY LOG ---
-st.sidebar.header("📜 Memory History")
-history = get_memory_history()
-
-if not history:
-    st.sidebar.info("No memories logged yet. Take a snapshot!")
+# 2. API KEY SETUP
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
 else:
-    for item in reversed(history): # Show newest first
-        st.sidebar.write(item)
-        st.sidebar.divider()
+    # Fallback for local testing
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+    api_key = os.getenv("GOOGLE_API_KEY")
 
-# --- MAIN INTERFACE: CAMERA ---
-st.subheader("Step 1: Capture your environment")
-snapshot = st.camera_input("Snapshot your desk")
+# Initialize Client
+client = genai.Client(api_key=api_key)
+MODEL_ID = "gemini-1.5-flash" 
 
-if snapshot:
-    st.subheader("Step 2: Analyze & Remember")
-    if st.button("🔍 Analyze Scene"):
-        # Convert Streamlit upload to PIL Image for Gemini
-        img = Image.open(snapshot)
-        
-        with st.spinner("Agent is scanning the scene..."):
-            result = analyze_scene(img)
-            
-        if "Error" in result:
-            st.error(result)
-        else:
-            st.success("Scene analyzed and saved to memory!")
-            st.write("**Agent Observation:**")
-            st.info(result)
+# 3. MEMORY LOGIC
+if 'internal_memory' not in st.session_state:
+    st.session_state.internal_memory = []
 
-# --- CHAT INTERFACE: QUERY ---
-st.divider()
-st.subheader("Step 3: Ask your Agent")
-user_query = st.text_input("e.g., 'Where did I leave my keys?'")
+def save_to_memory(observation: str):
+    timestamp = time.strftime("%H:%M:%S")
+    entry = f"**[{timestamp}]** {observation}"
+    st.session_state.internal_memory.append(entry)
 
-if user_query:
-    if not history:
-        st.warning("I don't have any memories yet. Please analyze a scene first!")
+# 4. UI - SIDEBAR (THE LOG)
+with st.sidebar:
+    st.header("📜 Memory History")
+    if not st.session_state.internal_memory:
+        st.info("No items logged yet.")
     else:
-        st.write("**Searching memory...**")
-        # Simple logical check for the demo
-        # (In a full app, you'd send the query + history to Gemini)
-        st.write("Based on my logs, here is what I remember:")
-        st.write(history[-1]) # Show the most recent context
+        # Clear Memory Button
+        if st.button("Clear History"):
+            st.session_state.internal_memory = []
+            st.rerun()
+        
+        for item in reversed(st.session_state.internal_memory):
+            st.markdown(item)
+            st.divider()
+
+# 5. UI - MAIN PANEL
+st.title("🧠 Visual Memory Agent")
+st.write("Your AI-powered 'Second Brain' for tracking physical objects.")
+
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader("📷 Snapshot")
+    snapshot = st.camera_input("Capture your desk/room")
+
+with col2:
+    st.subheader("🤖 Analysis")
+    if snapshot:
+        if st.button("Analyze & Remember"):
+            img = Image.open(snapshot)
+            with st.spinner("Processing image..."):
+                try:
+                    response = client.models.generate_content(
+                        model=MODEL_ID,
+                        contents=["Be concise. List the main objects in this image and their approximate locations.", img]
+                    )
+                    
+                    # Display Result
+                    st.success("Memory Captured!")
+                    st.markdown(response.text)
+                    
+                    # Save to Session State
+                    save_to_memory(response.text)
+                    
+                except Exception as e:
+                    if "RESOURCE_EXHAUSTED" in str(e):
+                        st.error("Quota exceeded. Please wait 60 seconds or use a new API key.")
+                    else:
+                        st.error(f"Error: {e}")
+    else:
+        st.info("Please take a photo to begin.")
+
+# 6. QUERY SECTION
+st.divider()
+st.subheader("❓ Ask Memory")
+query = st.text_input("Where did I put my...?")
+if query and st.session_state.internal_memory:
+    st.write("Searching through your history...")
+    # For the demo, we show the last known context
+    st.write("Based on the most recent scan:")
+    st.info(st.session_state.internal_memory[-1])
