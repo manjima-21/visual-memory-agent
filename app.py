@@ -1,68 +1,62 @@
 import os
 import time
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 from PIL import Image
 
-# --- 1. CONFIGURATION ---
-st.set_page_config(page_title="Memory Agent", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="Memory Agent", page_icon="🧠")
 
-# API Key Handling
+# 1. API SETUP
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
 else:
     api_key = os.getenv("GOOGLE_API_KEY")
 
-# Initialize the STABLE SDK
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
+client = genai.Client(api_key=api_key)
 
-# --- 2. SESSION STATE (MEMORY) ---
-if 'memory' not in st.session_state:
-    st.session_state.memory = []
+# 2. THE MULTI-MODEL FALLBACK (To fix that 404!)
+# We will try these names in order until one works
+MODELS_TO_TRY = ["gemini-1.5-flash", "gemini-1.5-flash-002", "gemini-2.0-flash"]
 
-# --- 3. SIDEBAR (LOGS) ---
-with st.sidebar:
-    st.header("📜 Memory Logs")
-    if not st.session_state.memory:
-        st.info("No items remembered yet.")
-    else:
-        if st.button("Clear Brain"):
-            st.session_state.memory = []
-            st.rerun()
-        for entry in reversed(st.session_state.memory):
-            st.markdown(entry)
-            st.divider()
+if 'internal_memory' not in st.session_state:
+    st.session_state.internal_memory = []
 
-# --- 4. MAIN UI ---
+# 3. UI
 st.title("🧠 Visual Memory Agent")
-st.write("Snap a photo, and I'll remember where your items are.")
 
-col1, col2 = st.columns([1, 1])
+with st.sidebar:
+    st.header("📜 Memory History")
+    for item in reversed(st.session_state.internal_memory):
+        st.write(item)
+        st.divider()
 
-with col1:
-    st.subheader("📷 Capture")
-    snapshot = st.camera_input("Take a snapshot of your desk")
+snapshot = st.camera_input("Take a photo")
 
-with col2:
-    st.subheader("🔍 Agent Analysis")
-    if snapshot:
-        if st.button("Analyze & Archive"):
-            img = Image.open(snapshot)
-            with st.spinner("Thinking..."):
+if snapshot:
+    if st.button("Analyze Scene"):
+        img = Image.open(snapshot)
+        success = False
+        
+        with st.spinner("Searching for a stable model connection..."):
+            for model_name in MODELS_TO_TRY:
                 try:
-                    # The vision call
-                    response = model.generate_content(["List the objects in this image and their positions.", img])
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=["What is in this image? Be brief.", img]
+                    )
+                    # If we reach here, it worked!
+                    analysis = response.text
+                    st.success(f"Analyzed using {model_name}")
+                    st.write(analysis)
                     
-                    # UI update
-                    st.success("Memory Saved!")
-                    st.markdown(response.text)
-                    
-                    # Archive in memory
+                    # Save to memory
                     timestamp = time.strftime("%H:%M:%S")
-                    st.session_state.memory.append(f"**[{timestamp}]** {response.text}")
-                    
+                    st.session_state.internal_memory.append(f"[{timestamp}] {analysis}")
+                    success = True
+                    break # Stop trying other models
                 except Exception as e:
-                    st.error(f"Error: {e}")
-    else:
-        st.info("Awaiting snapshot...")
+                    # If it's a 404, we just try the next model in the list
+                    continue
+            
+            if not success:
+                st.error("Google's servers are busy. Please try clicking again in 10 seconds.")
