@@ -21,7 +21,7 @@ else:
 
 # Initialize Client
 client = genai.Client(api_key=api_key)
-MODEL_ID = "gemini-1.5-flash" 
+MODEL_ID = "models/gemini-1.5-flash" 
 
 # 3. MEMORY LOGIC
 if 'internal_memory' not in st.session_state:
