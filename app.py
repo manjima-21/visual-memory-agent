@@ -24,9 +24,10 @@ if cam_input:
         with st.spinner("Analyzing and storing memory..."):
             try:
                 # USE FLASH-8B FOR MAX STABILITY
+                # Change this line in your app.py:
                 response = client.models.generate_content(
-                    model="gemini-1.5-flash-8b",
-                    contents=["Precisely describe the objects in this image and their positions for a spatial memory log.", img]
+                    model="gemini-3.1-flash-lite-preview", # <-- Use this updated model name
+                    contents=["Describe this scene for my memory log.", img]
                 )
                 
                 # STORE IN SESSION STATE
