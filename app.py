@@ -7,7 +7,7 @@ if "memory_bank" not in st.session_state:
     st.session_state.memory_bank = []
 
 # --- 2. API SETUP ---
-client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
+client = genai.Client(api_key="AIzaSyBUHjHhz3hQuvcUDG63eoweynYibUFB-tc")
 
 # --- 3. UI ---
 st.title("🧠 AI Visual Memory Agent")
